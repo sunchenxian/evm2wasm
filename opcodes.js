@@ -165,27 +165,28 @@ module.exports = function (op) {
 
   switch (opcode) {
     case 'LOG':
-      number = op - 0xa0
+      number = op - 0xa0  // 0 ~ 4
       break
 
     case 'PUSH':
-      number = op - 0x5f
+      number = op - 0x5f  // 1 ~ 16
       break
 
     case 'DUP':
-      number = op - 0x7f
+      number = op - 0x7f  // 1 ~ 16
       break
 
     case 'SWAP':
-      number = op - 0x8f
+      number = op - 0x8f  // 1 ~ 16
       break
   }
 
+
   return {
-    name: opcode,
-    fee: code[1],
-    off: code[2],
-    on: code[3],
-    number: number
+    name: opcode,   // op name
+    fee: code[1],   // op gas
+    off: code[2],   // pop count
+    on: code[3],    // push count
+    number: number  // bytes of operands
   }
 }

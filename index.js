@@ -73,6 +73,20 @@ const callbackFuncs = new Map([
   ['BLOCKHASH', '$callback_256']
 ])
 
+
+// add by csun for debug
+var int2hex = function( n ) {
+  return n > 15 ? n.toString( 16 ) : ("0" + n.toString( 16 ))
+}
+
+var bin2hex = function( bin ) {
+  var str=""
+  for ( var i=0; i<bin.length; i++ ) {
+    str += int2hex( bin[i] )
+  }
+  return str
+}
+
 /**
  * compiles evmCode to wasm in the binary format
  * @param {Array} evmCode
@@ -91,11 +105,14 @@ exports.evm2wasm = function (evmCode, opts = {
   'chargePerOp': false
 }) {
   const wast = exports.evm2wast(evmCode, opts)
-  const mod = wabt.parseWat('arbitraryModuleName', wast)
+  // modify by csun
+  // modify wabt to wabt(), because wabt is a function that return wabt object
+  const mod = wabt().parseWat('arbitraryModuleName', wast)
   mod.resolveNames()
   mod.validate()
   const bin = mod.toBinary({log: false, write_debug_names: false}).buffer
   mod.destroy()
+  //console.log( bin2hex( bin ) )
   return Promise.resolve(bin)
 }
 
@@ -161,6 +178,8 @@ exports.evm2wast = function (evmCode, opts = {
     addStackCheck()
     addMetering()
   }
+
+  
   // this keep track of the opcode we have found so far. This will be used to
   // to figure out what .wast files to include
   const opcodesUsed = new Set()
@@ -181,9 +200,14 @@ exports.evm2wast = function (evmCode, opts = {
   let segmentStackHigh = 0
   let segmentStackLow = 0
 
+  let i = 0
+  let a = ""
   for (let pc = 0; pc < evmCode.length; pc++) {
     const opint = evmCode[pc]
     const op = opcodes(opint)
+
+    // i++
+    // console.log( i+"  :   " + int2hex( opint ) + ", opnumber="+op.number + ", opname="+op.name + ", pc="+pc )
 
     // creates a stack trace
     if (opts.stackTrace) {
@@ -268,28 +292,36 @@ exports.evm2wast = function (evmCode, opts = {
       case 'SWAP':
         // adds the number on the stack to SWAP
         segment += `(call $${op.name} (i32.const ${op.number - 1}))\n`
+        // console.log( "  DUP stack item", op.number - 1, "and push to stack" )
         break
       case 'PC':
         segment += `(call $PC (i32.const ${pc}))\n`
         break
       case 'PUSH':
-        pc++
+        pc++      // point to first operand
         bytes = ethUtil.setLength(evmCode.slice(pc, pc += op.number), 32)
-        const bytesRounded = Math.ceil(op.number / 8)
+        //console.log( "  every opCode or operand is 32 bytes, buffer is", bytes, "index from", pc - op.number, "to", pc )
+        const bytesRounded = Math.ceil(op.number / 8)   // max op.number is 16, so bytesRound is range from 1 to 2 
+        //console.log( "  host support max integer type is int64, define 8 bytes for each Round, and there is", bytesRounded, "valid round" )
         let push = ''
         let q = 0
         // pad the remaining of the word with 0
-        for (; q < 4 - bytesRounded; q++) {
-          push = '(i64.const 0)' + push
+        //console.log( "  push i64.const 0 ", (4 - bytesRounded) * 8, "bytes for 256bit padding" )
+        for (; q < 4 - bytesRounded; q++) {   // q is range from 0 to x(2 ~ 3)
+          push = '(i64.const 0)' + push       // pad with 0
         }
 
-        for (; q < 4; q++) {
+        //console.log( "  push i64.const valid operand", 4-q, "times and total", (4 - q) * 8, "bytes" )
+        for (; q < 4; q++) {                  // q is range from x(2 ~ 3) to 3
           const int64 = bytes2int64(bytes.slice(q * 8, q * 8 + 8))
+          //console.log( "                operand is", int64 )
+          //console.log( "                operand hex is", int2hex( bytes[q*8] ), int2hex( bytes[q*8+1] ), int2hex( bytes[q*8+2] ), int2hex( bytes[q*8+3] ), int2hex( bytes[q*8+4] ), int2hex( bytes[q*8+5] ), int2hex( bytes[q*8+6] ), int2hex( bytes[q*8+7] ) )
           push = push + `(i64.const ${int64})`
         }
 
         segment += `(call $PUSH ${push})`
         pc--
+        //console.log( "  current pc is", pc )
         break
       case 'POP':
         // do nothing
@@ -368,7 +400,7 @@ exports.evm2wast = function (evmCode, opts = {
   if (opts.inlineOps) {
     [funcs, imports] = exports.resolveFunctions(opcodesUsed, wastFiles)
   }
-
+ 
   // import stack trace function
   if (opts.stackTrace) {
     imports.push('(import "debug" "printMemHex" (func $printMem (param i32 i32)))')
@@ -377,8 +409,13 @@ exports.evm2wast = function (evmCode, opts = {
   }
   imports.push('(import "ethereum" "useGas" (func $useGas (param i64)))')
 
+  // add by csun
+  // bug fixed: repeated import will cause error
+  imports = Array.from( new Set( imports ) )
+ 
   funcs.push(wast)
   wast = exports.buildModule(funcs, imports, callbackTable)
+
   return wast
 }
 
