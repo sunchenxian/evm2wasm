@@ -421,9 +421,6 @@ exports.evm2wast = function (evmCode, opts = {
   // bug fixed: repeated import will cause error
 
   imports = Array.from( new Set( imports ) )
-  //if ( imports.length > 0 && imports[0] == undefined )
-  //  imports.splice(0, 1)
-  //console.log( imports )
 
   funcs.push(wast)
   wast = exports.buildModule(funcs, imports, callbackTable)
