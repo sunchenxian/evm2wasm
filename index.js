@@ -4,6 +4,7 @@ const opcodes = require('./opcodes.js')
 const wastSyncInterface = require('./wasm/wast.json')
 const wastAsyncInterface = require('./wasm/wast-async.json')
 const wabt = require('wabt')
+const fs = require( "fs" )
 
 // map to track dependent WASM functions
 const depMap = new Map([
@@ -105,6 +106,10 @@ exports.evm2wasm = function (evmCode, opts = {
   'chargePerOp': false
 }) {
   const wast = exports.evm2wast(evmCode, opts)
+  var fileName = new Date().getTime()
+  fs.writeFile( "/tmp/" + fileName, wast, function( err ) {
+    console.log( err ? err : fileName )
+  } )
   // modify by csun
   // modify wabt to wabt(), because wabt is a function that return wabt object
   const mod = wabt().parseWat('arbitraryModuleName', wast)
@@ -112,6 +117,7 @@ exports.evm2wasm = function (evmCode, opts = {
   mod.validate()
   const bin = mod.toBinary({log: false, write_debug_names: false}).buffer
   mod.destroy()
+  
   //console.log( bin2hex( bin ) )
   return Promise.resolve(bin)
 }
@@ -394,6 +400,8 @@ exports.evm2wast = function (evmCode, opts = {
     wastFiles = wastAsyncInterface
   }
 
+ // console.log( wastAsyncInterface )
+
   let imports = []
   let funcs = []
   // inline EVM opcode implemention
@@ -411,8 +419,12 @@ exports.evm2wast = function (evmCode, opts = {
 
   // add by csun
   // bug fixed: repeated import will cause error
+
   imports = Array.from( new Set( imports ) )
- 
+  //if ( imports.length > 0 && imports[0] == undefined )
+  //  imports.splice(0, 1)
+  //console.log( imports )
+
   funcs.push(wast)
   wast = exports.buildModule(funcs, imports, callbackTable)
 
@@ -533,7 +545,11 @@ exports.resolveFunctions = function (funcSet, wastFiles) {
   let imports = []
   for (let func of resolveFunctionDeps(funcSet)) {
     funcs.push(wastFiles[func].wast)
-    imports.push(wastFiles[func].imports)
+    if ( wastFiles[func].imports != undefined ) {  
+      imports.push(wastFiles[func].imports)
+    } else {
+      //console.log( "undefined imports", func )
+    }
   }
   return [funcs, imports]
 }
